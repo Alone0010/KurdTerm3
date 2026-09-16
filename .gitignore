@@ -1,0 +1,12 @@
+.kurdterm-v3/
+api_env.sh
+*.key
+*.secret
+.env
+.env.*
+*.backup
+*.before-*
+*.final-backup
+*.stable-backup
+*.validation-backup
+*.dashboard-backup
