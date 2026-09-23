@@ -13,6 +13,10 @@ KurdTerm3
 
 📱 About
 
+## 🚀 Professional Mobile Development Platform for Termux
+
+**Created & Maintained by TaQaNa**
+
 KurdTerm3 is a modern terminal-based development platform designed for mobile users running Termux on Android.
 
 It provides a centralized dashboard for accessing development tools, file management, web servers, project creation, AI utilities, automation, backups, plugins, security tools, system management, and more.
@@ -83,6 +87,28 @@ Before installing KurdTerm3, make sure you have:
 
 Install Git in Termux:
 
+---
+
+## ✨ Features
+
+- 📱 Mobile-friendly terminal dashboard
+- 🛠️ Project management
+- 📂 Project workspace
+- 🔌 Plugin support
+- 💾 Backup system
+- ⚙️ Configuration system
+- 🚀 Mobile development tools
+- 🎨 Modern terminal interface
+
+---
+
+# 📥 Installation
+
+### Step 1 — Install Git
+
+Open Termux and run:
+
+```bash
 pkg update -y
 pkg install git -y
 
@@ -105,7 +131,7 @@ bash install.sh
 After successful installation, you should see:
 
 INSTALLATION SUCCESSFUL
-======================================
+===============================
 
 Version : 3.0.0
 Install : /data/data/com.termux/files/home/.kurdterm-v3
@@ -298,3 +324,4 @@ Copyright © 2026 TaQaNa
 <p align="center">
   <strong>Built for mobile development.</strong>
 </p>
+

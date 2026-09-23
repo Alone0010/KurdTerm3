@@ -321,26 +321,119 @@ dashboard() {
             2)
                 file_center
                 ;;
-            3)
-                developer_center
-                ;;
             4)
-                ai_center
-                ;;
-            5)
-                project_builder
-                ;;
-            6)
-                backup_center
-                ;;
-            7)
-                smart_doctor
+                clear_screen
+                show_logo
+
+                echo -e "${BRIGHT_GREEN}Listening Ports${RESET}"
+                divider
+                echo
+
+                found_ports=0
+
+                if command_exists ss; then
+                    TCP_PORTS=$(ss -lntH 2>/dev/null)
+
+                    if [ -n "$TCP_PORTS" ]; then
+                        echo -e "${BRIGHT_GREEN}TCP Listening:${RESET}"
+                        echo
+                        printf '%s\n' "$TCP_PORTS"
+                        found_ports=1
+                    fi
+
+                    UDP_PORTS=$(ss -lnuH 2>/dev/null)
+
+                    if [ -n "$UDP_PORTS" ]; then
+                        echo
+                        echo -e "${BRIGHT_GREEN}UDP Listening:${RESET}"
+                        echo
+                        printf '%s\n' "$UDP_PORTS"
+                        found_ports=1
+                    fi
+
+                elif command_exists netstat; then
+                    TCP_PORTS=$(netstat -lnt 2>/dev/null | tail -n +3)
+
+                    if [ -n "$TCP_PORTS" ]; then
+                        echo -e "${BRIGHT_GREEN}TCP Listening:${RESET}"
+                        echo
+                        printf '%s\n' "$TCP_PORTS"
+                        found_ports=1
+                    fi
+
+                    UDP_PORTS=$(netstat -lnu 2>/dev/null | tail -n +3)
+
+                    if [ -n "$UDP_PORTS" ]; then
+                        echo
+                        echo -e "${BRIGHT_GREEN}UDP Listening:${RESET}"
+                        echo
+                        printf '%s\n' "$UDP_PORTS"
+                        found_ports=1
+                    fi
+
+                else
+                    echo -e "${YELLOW}ss/netstat not found.${RESET}"
+                    echo -e "${DIM}Install iproute2 for better port information:${RESET}"
+                    echo "pkg install iproute2"
+                    echo
+                fi
+
+                if [ "$found_ports" -eq 0 ]; then
+                    echo
+                    echo -e "${DIM}No listening ports found.${RESET}"
+                    echo
+                    echo "Start a local server, for example:"
+                    echo "python -m http.server 8080"
+                    echo
+                    echo "Then run this option again."
+                fi
+
+                echo
+                divider
+                pause_screen
                 ;;
             8)
-                settings
+                clear_screen
+                show_logo
+
+                echo -e "${BRIGHT_GREEN}Cleanup Stopped Records${RESET}"
+                echo "----------------------------------------------"
+                echo
+
+                cleanup_server_registry
+
+                echo
+                echo "Server registry:"
+                cat "$SERVER_REGISTRY" 2>/dev/null || true
+
+                echo
+                pause_screen
                 ;;
+            8)
+                clear_screen
+                show_logo
+
+                echo -e "${BRIGHT_GREEN}Cleanup Stopped Records${RESET}"
+                echo "----------------------------------------------"
+                echo
+
+                cleanup_server_registry
+
+                echo
+                echo "Server registry:"
+                cat "$SERVER_REGISTRY" 2>/dev/null || true
+
+                echo
+                pause_screen
+                ;;
+
+
+
+
             0)
                 return
+
+
                 ;;
             *)
                 echo
@@ -943,7 +1036,220 @@ developer_center() {
     done
 }
 
+
 # ------------------------------------------------------------
+# Server Registry
+# ------------------------------------------------------------
+
+SERVER_REGISTRY="$APP_HOME/servers.db"
+
+ensure_server_registry() {
+    mkdir -p "$APP_HOME"
+    touch "$SERVER_REGISTRY"
+}
+
+register_server() {
+    local name="$1"
+    local port="$2"
+    local directory="$3"
+    local pid="$4"
+
+    ensure_server_registry
+
+    printf '%s|%s|%s|%s|%s\n' \
+        "$name" "$port" "$directory" "$pid" "$(date +%s)" \
+        >> "$SERVER_REGISTRY"
+}
+
+server_pid_running() {
+    local pid="$1"
+
+    kill -0 "$pid" 2>/dev/null
+}
+
+show_managed_servers() {
+    ensure_server_registry
+
+    echo
+    echo -e "${BRIGHT_CYAN}${BOLD}KURDTERM3 MANAGED SERVERS${RESET}"
+    divider
+    echo
+
+    if [ ! -s "$SERVER_REGISTRY" ]; then
+        echo -e "${DIM}No managed servers found.${RESET}"
+        return
+    fi
+
+    local found=0
+
+    while IFS='|' read -r name port directory pid started; do
+        [ -z "$pid" ] && continue
+
+        found=1
+
+        if server_pid_running "$pid"; then
+            status="${BRIGHT_GREEN}RUNNING${RESET}"
+        else
+            status="${RED}STOPPED${RESET}"
+        fi
+
+        echo -e "${BOLD}$name${RESET}"
+        echo "  Port      : $port"
+        echo "  Directory : $directory"
+        echo "  PID       : $pid"
+        echo -e "  Status    : $status"
+        echo
+    done < "$SERVER_REGISTRY"
+
+    [ "$found" -eq 0 ] && echo -e "${DIM}No managed servers found.${RESET}"
+}
+
+cleanup_server_registry() {
+    ensure_server_registry
+
+    local temp_file="$SERVER_REGISTRY.tmp"
+    : > "$temp_file"
+
+    while IFS='|' read -r name port directory pid started; do
+        [ -z "$pid" ] && continue
+
+        if server_pid_running "$pid"; then
+            printf '%s|%s|%s|%s|%s\n' \
+                "$name" "$port" "$directory" "$pid" "$started" >> "$temp_file"
+        fi
+    done < "$SERVER_REGISTRY"
+
+    mv "$temp_file" "$SERVER_REGISTRY"
+
+    print_ok "Stopped server records cleaned."
+}
+
+stop_managed_server() {
+    ensure_server_registry
+
+    echo
+    read -r -p "PID to stop: " pid
+
+    if [ -z "$pid" ]; then
+        print_error "PID is required."
+        return
+    fi
+
+    if server_pid_running "$pid"; then
+        kill "$pid" 2>/dev/null
+
+        sleep 1
+
+        if server_pid_running "$pid"; then
+            kill -9 "$pid" 2>/dev/null
+        fi
+
+        print_ok "Server stopped."
+    else
+        print_warn "Server is not running."
+    fi
+}
+
+# ------------------------------------------------------------
+
+# Server Manager - Restart
+# ------------------------------------------------------------
+
+restart_managed_server() {
+    ensure_server_registry
+
+    echo
+    read -r -p "PID to restart: " pid
+
+    if [ -z "$pid" ]; then
+        print_error "PID is required."
+        return
+    fi
+
+    local name=""
+    local port=""
+    local directory=""
+    local started=""
+
+    while IFS='|' read -r r_name r_port r_directory r_pid r_started; do
+        if [ "$r_pid" = "$pid" ]; then
+            name="$r_name"
+            port="$r_port"
+            directory="$r_directory"
+            started="$r_started"
+            break
+        fi
+    done < "$SERVER_REGISTRY"
+
+    if [ -z "$directory" ] || [ -z "$port" ]; then
+        print_error "Server record not found."
+        return
+    fi
+
+    if server_pid_running "$pid"; then
+        kill "$pid" 2>/dev/null
+        sleep 1
+    fi
+
+    cd "$directory" || {
+        print_error "Could not open server directory."
+        return
+    }
+
+    python -m http.server "$port" >"$directory/.kurdterm-server-$port.log" 2>&1 &
+    local new_pid=$!
+
+    sleep 1
+
+    if server_pid_running "$new_pid"; then
+        register_server "$name" "$port" "$directory" "$new_pid"
+
+        echo
+        print_ok "Server restarted."
+        echo "URL    : http://127.0.0.1:$port"
+        echo "PID    : $new_pid"
+        echo "Status : RUNNING"
+    else
+        print_error "Server failed to restart."
+    fi
+}
+
+
+# Server Manager - Remove
+# ------------------------------------------------------------
+
+remove_stopped_server() {
+    ensure_server_registry
+
+    echo
+    read -r -p "PID to remove: " pid
+
+    if [ -z "$pid" ]; then
+        print_error "PID is required."
+        return
+    fi
+
+    if server_pid_running "$pid"; then
+        print_error "Server is still running. Stop it first."
+        return
+    fi
+
+    local temp_file="${SERVER_REGISTRY}.tmp"
+    : > "$temp_file"
+
+    while IFS='|' read -r name port directory r_pid started; do
+        [ -z "$r_pid" ] && continue
+        [ "$r_pid" = "$pid" ] && continue
+
+        printf '%s|%s|%s|%s|%s\n' \
+            "$name" "$port" "$directory" "$r_pid" "$started" >> "$temp_file"
+    done < "$SERVER_REGISTRY"
+
+    mv "$temp_file" "$SERVER_REGISTRY"
+
+    print_ok "Server record removed."
+}
+
 # Web Server
 # ------------------------------------------------------------
 
@@ -957,8 +1263,13 @@ web_server() {
         echo
 
         echo "  [1] Start local server"
-        echo "  [2] Show IP addresses"
-        echo "  [3] Show listening ports"
+        echo "  [2] Show managed servers"
+        echo "  [3] Stop server"
+        echo "  [4] Restart server"
+        echo "  [5] Remove stopped server"
+        echo "  [6] Show IP addresses"
+        echo "  [7] Managed listening ports"
+        echo "  [8] Cleanup stopped records"
         echo "  [0] Back"
         echo
 
@@ -1001,18 +1312,77 @@ web_server() {
                 }
 
                 echo
-                echo -e "${BRIGHT_GREEN}Server running${RESET}"
-                echo "http://127.0.0.1:$port"
-                echo
-                echo "Press CTRL+C to stop."
+                echo -e "${BRIGHT_GREEN}Starting server...${RESET}"
                 echo
 
-                python -m http.server "$port"
+                ensure_server_registry
+
+                python -m http.server "$port" \
+                    >"$directory/.kurdterm-server-$port.log" 2>&1 &
+
+                local server_pid=$!
+
+                sleep 1
+
+                if server_pid_running "$server_pid"; then
+                    register_server \
+                        "Python HTTP Server" \
+                        "$port" \
+                        "$directory" \
+                        "$server_pid"
+
+                    echo -e "${BRIGHT_GREEN}Server running${RESET}"
+                    echo "http://127.0.0.1:$port"
+                    echo
+                    echo "Directory : $directory"
+                    echo "Port      : $port"
+                    echo "PID       : $server_pid"
+                    echo "Status    : RUNNING"
+                else
+                    print_error "Server failed to start."
+                    echo
+                    echo "Check:"
+                    echo "$directory/.kurdterm-server-$port.log"
+                fi
+
+                pause_screen
                 ;;
 
             2)
                 clear_screen
                 show_logo
+                show_managed_servers
+                pause_screen
+                ;;
+
+            3)
+                clear_screen
+                show_logo
+                stop_managed_server
+                pause_screen
+                ;;
+
+            4)
+                clear_screen
+                show_logo
+                restart_managed_server
+                pause_screen
+                ;;
+
+            5)
+                clear_screen
+                show_logo
+                remove_stopped_server
+                pause_screen
+                ;;
+
+            6)
+                clear_screen
+                show_logo
+
+                echo -e "${BRIGHT_GREEN}IP ADDRESSES${RESET}"
+                echo "----------------------------------------------"
+                echo
 
                 if command_exists ip; then
                     ip addr show
@@ -1025,80 +1395,64 @@ web_server() {
                 pause_screen
                 ;;
 
-            3)
+            7)
                 clear_screen
                 show_logo
 
-                echo -e "${BRIGHT_GREEN}Listening Ports${RESET}"
+                echo -e "${BRIGHT_GREEN}MANAGED LISTENING PORTS${RESET}"
                 echo "----------------------------------------------"
                 echo
 
-                found_ports=0
+                ensure_server_registry
 
-                if command_exists ss; then
-                    TCP_PORTS=$(ss -lnt 2>/dev/null | tail -n +2)
+                found_managed=0
 
-                    if [ -n "$TCP_PORTS" ]; then
-                        echo -e "${BRIGHT_GREEN}TCP Listening:${RESET}"
-                        echo
-                        printf '%s
-' "$TCP_PORTS"
-                        found_ports=1
-                    fi
+                if [ -s "$SERVER_REGISTRY" ]; then
+                    while IFS='|' read -r name port directory pid started; do
+                        [ -z "$pid" ] && continue
 
-                    UDP_PORTS=$(ss -lnu 2>/dev/null | tail -n +2)
+                        if server_pid_running "$pid"; then
+                            found_managed=1
 
-                    if [ -n "$UDP_PORTS" ]; then
-                        echo
-                        echo -e "${BRIGHT_GREEN}UDP Listening:${RESET}"
-                        echo
-                        printf '%s
-' "$UDP_PORTS"
-                        found_ports=1
-                    fi
+                            echo -e "${BRIGHT_GREEN}RUNNING${RESET}  $name"
+                            echo "  Port      : $port"
+                            echo "  Directory : $directory"
+                            echo "  PID       : $pid"
+                            echo
+                        fi
+                    done < "$SERVER_REGISTRY"
+                fi
 
-                elif command_exists netstat; then
-                    TCP_PORTS=$(netstat -lnt 2>/dev/null | tail -n +3)
+                if [ "$found_managed" -eq 0 ]; then
+                    echo -e "${DIM}No running managed servers found.${RESET}"
+                fi
 
-                    if [ -n "$TCP_PORTS" ]; then
-                        echo -e "${BRIGHT_GREEN}TCP Listening:${RESET}"
-                        echo
-                        printf '%s
-' "$TCP_PORTS"
-                        found_ports=1
-                    fi
+                echo
+                echo "----------------------------------------------"
+                pause_screen
+                ;;
 
-                    UDP_PORTS=$(netstat -lnu 2>/dev/null | tail -n +3)
+            8)
+                clear_screen
+                show_logo
 
-                    if [ -n "$UDP_PORTS" ]; then
-                        echo
-                        echo -e "${BRIGHT_GREEN}UDP Listening:${RESET}"
-                        echo
-                        printf '%s
-' "$UDP_PORTS"
-                        found_ports=1
-                    fi
+                echo -e "${BRIGHT_GREEN}CLEANUP STOPPED RECORDS${RESET}"
+                echo "----------------------------------------------"
+                echo
 
+                cleanup_server_registry
+
+                echo
+                echo "Remaining records:"
+                echo
+
+                if [ -s "$SERVER_REGISTRY" ]; then
+                    cat "$SERVER_REGISTRY"
                 else
-                    print_error "Network port tool unavailable."
-                    echo
-                    echo "Install it with:"
-                    echo "pkg install iproute2"
-                    echo
-                fi
-
-                if [ "$found_ports" -eq 0 ]; then
-                    echo
-                    echo -e "${DIM}No listening ports found.${RESET}"
-                    echo
-                    echo "Start a local server, for example:"
-                    echo "python -m http.server 8080"
-                    echo
-                    echo "Then run this option again."
+                    echo -e "${DIM}No server records found.${RESET}"
                 fi
 
                 echo
-                echo "----------------------------------------------"
                 pause_screen
                 ;;
 
@@ -1108,15 +1462,12 @@ web_server() {
 
             *)
                 print_error "Invalid option."
-                sleep 1
+                pause_screen
                 ;;
         esac
     done
 }
 
-# ------------------------------------------------------------
-# Project Builder
-# ------------------------------------------------------------
 
 project_builder() {
     while true; do
@@ -1791,6 +2142,13 @@ security_center() {
                 ;;
 
             2)
+                clear_screen
+                show_logo
+                show_managed_servers
+                pause_screen
+                ;;
+
+            3)
                 clear_screen
                 show_logo
 

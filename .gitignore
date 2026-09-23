@@ -10,3 +10,13 @@ api_env.sh
 *.stable-backup
 *.validation-backup
 *.dashboard-backup
+
+# Local working data
+backups/
+projects/
+KurdTerm3/
+
+# Local runtime files
+.kurdterm-v3/
+servers.db
+*.log
